@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environment variables file
+.env
+
+# Flask instance folder
+instance/
+.webassets-cache
+
+# Pytest cache
+.pytest_cache/
+
+# VS Code settings
+.vscode/
+
+# mypy
+.mypy_cache/
+
+# PyCharm settings
+.idea/
+
+# SQLite database
+*.sqlite3
+*.db
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+
+# Virtualenv
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Sphinx documentation
+docs/_build/
+
+# macOS
+.DS_Store
+
+openapi.json
