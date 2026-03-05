@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from typing import AsyncIterator, Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
@@ -32,17 +33,65 @@ def _sync_to_async_pg_url(url: str) -> str:
     return url
 
 
+def _postgres_url_needs_credentials(url: str) -> bool:
+    """
+    Return True if the URL is a postgres URL that lacks username/password.
+
+    Some orchestrators provide `POSTGRES_URL=postgresql://host:port/db` and separate
+    `POSTGRES_USER` / `POSTGRES_PASSWORD`. SQLAlchemy/asyncpg still need credentials
+    in the URL, so we splice them in when missing.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    if parsed.scheme not in {"postgresql", "postgres", "postgresql+asyncpg"}:
+        return False
+
+    # urlparse sets username/password based on netloc userinfo
+    return (parsed.username is None) and (parsed.password is None)
+
+
+def _inject_credentials_into_postgres_url(url: str, user: str, password: str) -> str:
+    """Inject user/password into a postgres URL that currently has none."""
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port
+    path = parsed.path or ""
+    scheme = parsed.scheme
+
+    # Preserve query/fragment if present.
+    query = f"?{parsed.query}" if parsed.query else ""
+    fragment = f"#{parsed.fragment}" if parsed.fragment else ""
+
+    port_part = f":{port}" if port else ""
+    # Keep the path as-is (should include leading slash + db name).
+    return f"{scheme}://{user}:{password}@{host}{port_part}{path}{query}{fragment}"
+
+
 def _build_database_url_from_parts() -> Optional[str]:
     """
     Build a postgres URL from provided env vars, if present.
 
-    The database container advertises these possible env vars:
-    POSTGRES_URL, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT
+    The database container advertises these env vars:
+    - POSTGRES_URL
+    - POSTGRES_USER
+    - POSTGRES_PASSWORD
+    - POSTGRES_DB
+    - POSTGRES_PORT
 
-    We prefer POSTGRES_URL if available; otherwise construct from parts.
+    Resolution:
+    1) If POSTGRES_URL is set, use it. If it lacks credentials but POSTGRES_USER/PASSWORD
+       exist, inject them into the URL.
+    2) Otherwise construct a URL from parts if user/password/db/port exist.
     """
     pg_url = os.getenv("POSTGRES_URL")
     if pg_url:
+        user = os.getenv("POSTGRES_USER")
+        password = os.getenv("POSTGRES_PASSWORD")
+        if user and password and _postgres_url_needs_credentials(pg_url):
+            pg_url = _inject_credentials_into_postgres_url(pg_url, user=user, password=password)
         return pg_url
 
     user = os.getenv("POSTGRES_USER")

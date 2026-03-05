@@ -43,15 +43,31 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-allowed_origins = _split_csv(os.getenv("ALLOWED_ORIGINS", "*"))
+# CORS notes:
+# - Static-export Next.js apps will call the API from a browser origin, so CORS must allow that origin.
+# - If you use allow_credentials=True, CORS cannot use wildcard "*" origins.
+# Env vars supported:
+# - ALLOWED_ORIGINS (csv), or FRONTEND_ORIGINS (csv), or FRONTEND_ORIGIN (single)
+# - ALLOWED_METHODS/ALLOWED_HEADERS (csv)
+frontend_origins_raw = (
+    os.getenv("ALLOWED_ORIGINS")
+    or os.getenv("FRONTEND_ORIGINS")
+    or os.getenv("FRONTEND_ORIGIN")
+    or "*"
+)
+allowed_origins = _split_csv(frontend_origins_raw)
 allowed_headers = _split_csv(os.getenv("ALLOWED_HEADERS", "*"))
 allowed_methods = _split_csv(os.getenv("ALLOWED_METHODS", "*"))
 cors_max_age = int(os.getenv("CORS_MAX_AGE", "3600"))
 
+# If we are allowing all origins, we must disable credentials.
+# (Starlette/FastAPI will otherwise generate invalid CORS responses.)
+allow_all_origins = allowed_origins == ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all_origins else allowed_origins,
+    allow_credentials=False if allow_all_origins else True,
     allow_methods=allowed_methods if allowed_methods != ["*"] else ["*"],
     allow_headers=allowed_headers if allowed_headers != ["*"] else ["*"],
     max_age=cors_max_age,
